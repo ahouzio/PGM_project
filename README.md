@@ -3,4 +3,4 @@ Study of several papers about "Denoising score matching for diffusion models"
 
 **TODO** : 
 
-Crop a rando part of the image and generate the missing part
+-Crop a random part of the image and generate the missing part
