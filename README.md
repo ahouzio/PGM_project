@@ -22,7 +22,7 @@ Study of several papers about "Denoising score matching for diffusion models"
    - [ ] The choice of the coefficients $\alpha(\sigma_i)$
    - [ ] The choice of $\epsilon$
    - [ ] The number of steps in the Langevin dynamics (additionally, try taking different number of steps for different $\sigma$)
-   - [ ] Experiment with different sets $	\left\{\sigma_i\right\}_{i = 1}^L$
+   - [ ] Experiment with different sets $	\\{\sigma_i\\}_{i = 1}^L$
 
 6. Applications
    - [ ] Impainting: crop a random part of the image and generate the missing part
