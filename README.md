@@ -7,10 +7,10 @@ Study of several papers about "Denoising score matching for diffusion models"
    - [x] Repeat the experiments with the pretrained models
 
 2. Toy experiment (mixture of Gaussians)
-   - [ ] Repeat experiment with a simple score network
-   - [ ] Repeat experiment with a similar noise conditional score network
-   - [ ] Visualize and compare real and estimated scores in both cases
-   - [ ] Compare Langevin dynamics samples with annealed Langevin dynamics samples
+   - [x] Repeat experiment with a simple score network
+   - [x] Repeat experiment with a similar noise conditional score network
+   - [x] Visualize and compare real and estimated scores in both cases
+   - [x] Compare Langevin dynamics samples with annealed Langevin dynamics samples
 
 3. MNIST
    - [x] Implement, train and test a noise conditional score network on the MNIST dataset
