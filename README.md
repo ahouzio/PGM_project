@@ -14,7 +14,8 @@ Study of several papers about "Denoising score matching for diffusion models"
 
 3. MNIST
    - [x] Implement, train and test a noise conditional score network on the MNIST dataset
-         Observation: Taking too many steps in the annealed Langevin dynamics result in bad samples. Can we explain why?
+         
+         ***Observation***: Taking too many steps in the annealed Langevin dynamics result in bad samples. Can we explain why?
 
 4. Experiments with parameters (on toy dataset, on MNIST or using the pretrained model)
    - [ ] Compare sliced score matching with denoising score matching (in terms of performance and computational costs)
