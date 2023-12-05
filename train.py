@@ -11,14 +11,16 @@ def train_ncsn(
     use_cuda: bool = False,
 ) -> dict:
     if use_cuda:
-        critic = model.cuda()
+        model = model.cuda()
     model.train()
 
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0, 0.9))
     batch_loss_history = {"loss": []}
     for epoch_i in tqdm(range(n_epochs)):
+        print("len(train_loader) ", len(train_loader))
         for batch_i, x in enumerate(train_loader):
+            print("batch_i ", batch_i)
             x = x[0]
             batch_size = x.shape[0]
             if use_cuda:
@@ -46,8 +48,10 @@ def train_ncsn(
 
             batch_loss_history["loss"].append(loss.data.cpu().numpy())
 
-        plt.plot(batch_loss_history["loss"])
-        plt.show()
+        # save batch_loss_history n a file
+        with open('batch_loss_history.txt', 'w') as f:
+            for key, value in batch_loss_history.items():
+                f.write('%s:%s\n' % (key, value))
     return batch_loss_history
 
 def save_model(model: object, path: str) -> None:

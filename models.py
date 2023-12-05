@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
+USE_CUDA = torch.cuda.is_available()
 def conv3x3(in_planes, out_planes, stride=1, bias=False):
     "3x3 convolution with padding"
     return nn.Conv2d(
@@ -609,9 +611,8 @@ class CondRefineNetDilated(nn.Module):
 
     def forward(self, x, y):
         x = 2 * x - 1.0
-
         output = self.begin_conv(x)
-
+        
         layer1 = self._compute_cond_module(self.res1, output, y)
         layer2 = self._compute_cond_module(self.res2, layer1, y)
         layer3 = self._compute_cond_module(self.res3, layer2, y)
@@ -626,7 +627,6 @@ class CondRefineNetDilated(nn.Module):
         output = self.act(output)
         output = self.end_conv(output)
         return output
-
 
 class NoiseConditionalScoreNetwork(nn.Module):
     def __init__(
@@ -654,6 +654,8 @@ class NoiseConditionalScoreNetwork(nn.Module):
         )
         if self.use_cuda:
             return noise.cuda()
+        return noise
+        
 
     def sample(
         self,
@@ -662,32 +664,79 @@ class NoiseConditionalScoreNetwork(nn.Module):
         sigmas: torch.Tensor,
         eps: float = 0.00005,
         save_history: bool = False,
-        save_freq: int = 100,
+        save_freq: int = 50,
+        init_samples: torch.Tensor = None,
     ) -> torch.Tensor:
         # annealed Langevin dynamics
-        x_k = self.prior(n_samples)
-        # for sigma in sigmas:
-        #   alpha = eps * sigma**2 / sigmas[-1]**2
-        #   for k in range(n_steps):
-        #     sigma_batch = torch.ones_like(x_k) * sigma
-        #     score = self(x_k, sigma_batch)
-        #     x_k += 0.5 * score + np.sqrt(alpha) * torch.randn_like(x_k)
+        if init_samples is None: 
+            x_k = self.prior(n_samples)
+        else:
+            x_k = init_samples
         history = []
         with torch.no_grad():
             for i, sigma in enumerate(sigmas):
                 alpha = eps * sigma**2 / sigmas[-1] ** 2
-            for k in range(n_steps):
-                sigma_batch = (
-                    torch.ones(n_samples, device=x_k.device, dtype=torch.int) * i
-                )
-                score = self(x_k, sigma_batch)
-                x_k += alpha * score.detach() / 2 + np.sqrt(alpha) * torch.randn_like(
-                    x_k
-                )
-                if save_history and k % save_freq == 0:
-                    history.append(x_k.cpu())
+                for k in range(n_steps+1):
+                    sigma_batch = (
+                        torch.ones(n_samples, device=x_k.device, dtype=torch.int) * i
+                    )
+                    score = self(x_k, sigma_batch)
+                    x_k += alpha * score.detach() / 2 + np.sqrt(alpha) * torch.randn_like(
+                        x_k
+                    )
+                    if save_history and k % save_freq == 0:
+                        history.append(x_k.cpu())
 
         if save_history:
             return x_k.cpu(), history
 
         return x_k.cpu()
+class SimpleScoreNetwork(nn.Module):
+  def __init__(self, hidden_dim: int = 128, data_dim: int = 2) -> None:
+    super().__init__()
+
+    self.data_dim = data_dim
+
+    self.layers = nn.Sequential(
+                  nn.Linear(2, hidden_dim),
+                  nn.Softplus(),
+                  nn.Linear(hidden_dim, hidden_dim),
+                  nn.Softplus(),
+                  nn.Linear(hidden_dim, 2),
+              )
+
+
+  def forward(self, input: torch.Tensor) -> torch.Tensor:
+    return self.layers(input)
+
+  def prior(self, n_samples):
+    # sample from prior distribution
+    noise = torch.randn(n_samples, self.data_dim)
+    if USE_CUDA:
+      return noise.cuda()
+    return noise
+
+  def sample(self, n_samples: int,
+             n_steps: int,
+             init_samples: torch.Tensor=None,   
+             eps: float = 0.00005,
+             save_history: bool = False,
+             save_freq: int = 1) -> torch.Tensor:
+    #Langevin dynamics
+    if init_samples is None:
+      x_k = self.prior(n_samples)
+    else:
+      x_k = init_samples
+    history = []
+    alpha = eps
+    with torch.no_grad():
+      for k in range(n_steps):
+        score = self(x_k)
+        x_k += alpha * score.detach() / 2 + np.sqrt(alpha) * torch.randn_like(x_k)
+        if save_history and k % save_freq == 0:
+          history.append(x_k.cpu())
+
+    if save_history:
+      return x_k.cpu(), history
+
+    return x_k.cpu()

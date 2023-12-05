@@ -22,6 +22,7 @@ def load_CIFAR10() -> Tuple[np.ndarray, np.ndarray]:
     return train_data, test_data
 
 
+
 def _load_dataset(name: str) -> Tuple[np.ndarray, np.ndarray]:
     if name == "mnist":
         return load_MNIST()
@@ -54,3 +55,4 @@ def load_dataset(
         test_data = test_data.reshape(len(train_data.shape[0]), -1)
 
     return train_data, test_data
+
