@@ -27,7 +27,8 @@ def main():
     parser.add_argument("--n_steps", type=int, default=100, help="number of steps")
     parser.add_argument("--save_freq", type=int, default=50, help="save frequency")
     parser.add_argument("--model_name", type=str, default="ncsn", help="model name")
-    parser.add_argument("--path", type=str, default="./mnist.pth", help="path to model")
+    parser.add_argument("--path", type=str, default="./pretrained_models/mnist.pth", help="path to model")
+    parser.add_argument("--eps", type=float, default=5e-5, help="eps")
     args = parser.parse_args()
     
     # command to train the model will be like:
@@ -105,6 +106,7 @@ if __name__ == "__main__":
             n_samples=args.n_samples,
             n_steps=args.n_steps,
             save_freq=args.save_freq,
+            eps=args.eps,
         )
     elif args.mode == "inpaint":
         logg.info("Starting inpainting")
@@ -116,8 +118,9 @@ if __name__ == "__main__":
         inpaint_ncsn(
             path=args.path,
             sigmas=sigmas,
-            visualize=True,
             use_cuda=args.use_cuda,
+            n_samples=args.n_samples,
+            n_steps=args.n_steps,
         )
     else:
         raise ValueError('The argument mode must have the values "train" or "generate"')

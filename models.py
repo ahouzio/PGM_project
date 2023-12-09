@@ -641,11 +641,11 @@ class NoiseConditionalScoreNetwork(nn.Module):
 
         self.image_size = image_size
         self.n_channels = n_channels
-        self.net = CondRefineNetDilated(image_size, num_classes, n_channels, ngf)
+        self.module = CondRefineNetDilated(image_size, num_classes, n_channels, ngf)
         self.use_cuda = use_cuda
 
     def forward(self, input: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
-        return self.net(input, sigma)
+        return self.module(input, sigma)
 
     def prior(self, n_samples):
         # sample from prior distribution

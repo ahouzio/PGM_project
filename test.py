@@ -1,12 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm.notebook import tqdm
 from models import NoiseConditionalScoreNetwork
 import torch
 from torchvision.utils import make_grid
 import os
 from load_data import load_dataset
-from PIL import Image
+import gc
 
 def test_ncsn(
     path: str,
@@ -16,46 +15,74 @@ def test_ncsn(
     n_samples: int = 5,
     n_steps: int = 100,
     save_freq: int = 50,
+    eps: float = 5e-5,
 ):
     refine_net = NoiseConditionalScoreNetwork(use_cuda=use_cuda)
-    refine_net.load_state_dict(torch.load(path))
+    states = torch.load(path)
+    pretrained = False
+    if len(states) == 2: # optimizer state was also saved in the checkpoint
+        refine_net.load_state_dict(states[0])
+        pretrained = True
+    else:
+        refine_net.load_state_dict(torch.load(path))
+    print("Model is pretrained: ", pretrained)
     refine_net.cuda()
     refine_net.eval()
     samples, history = refine_net.sample(
-        n_samples=n_samples, n_steps=n_steps, sigmas=sigmas, save_history=True
+        n_samples=n_samples, 
+        n_steps=n_steps, 
+        sigmas=sigmas, 
+        eps=eps,
+        save_history=True
     )
     if visualize:
-        visualize_history(samples, history, sigmas, save_freq, save_folder=f"{n_samples}_samples_{n_steps}_steps")
+        visualize_history(samples,
+                          history,
+                          sigmas,
+                          save_freq,
+                          pretrained,
+                          save_folder=f"{n_samples}_samples_{n_steps}_steps_sigma_{sigmas[0]:.4f}_{sigmas[-1]:.4f}_eps_{eps:.5f}")
 
-def visualize_history(samples, history,sigmas, save_freq, save_folder="samples"):
+def visualize_history(samples, history,sigmas, save_freq, pretrained, save_folder="samples"):
     print("Visualizing history")
     grid_samples = make_grid(samples, nrow=5)
     grid_img = grid_samples.permute(1, 2, 0).clip(0, 1)  
     print("Saving images")
     # creae save folder
     if not os.path.exists(save_folder):
-        os.makedirs(save_folder)
+        if pretrained:
+            save_folder = save_folder + "_pretrained"
+            os.makedirs(save_folder)
+        else:
+            os.makedirs(save_folder)
     steps_per_sigma = int(len(history) / len(sigmas))   
     for step in range(len(history)):
-        sigma_step = step // steps_per_sigma
+        sigma_step = step % steps_per_sigma
+        sigma_idx = step // steps_per_sigma
         grid_samples = make_grid(history[step], nrow=5)
         grid_img = grid_samples.permute(1, 2, 0).clip(0, 1)
         # save images in the save folder after converting them to numpy arrays
         grid_img = grid_img.cpu().numpy()
         step_size = sigma_step * save_freq
-        plt.imsave(f"{save_folder}/sigma_{sigmas[sigma_step]:.2f}_step_{step_size}_.png", grid_img)
+        plt.imsave(f"{save_folder}/sigma_{sigmas[sigma_idx]:.4f}_step_{step_size}.png", grid_img)
+    gc.collect()
 
 
 def inpaint_ncsn(
             path,
             sigmas,
-            visualize,
-            use_cuda
+            use_cuda,
+            n_samples,
+            n_steps,
         ) :
-    n_samples = 5
-    n_steps = 100
+
     refine_net = NoiseConditionalScoreNetwork(use_cuda=use_cuda)
-    refine_net.load_state_dict(torch.load(path))
+    states = torch.load(path)
+    if len(states) == 2: # optimizer state was also saved in the checkpoint
+        refine_net.load_state_dict(states[0])
+        pretrained = True
+    else:
+        refine_net.load_state_dict(torch.load(path))
     refine_net.cuda()
     refine_net.eval()
     # download test samples of MNIST
@@ -81,6 +108,7 @@ def inpaint_ncsn(
     samples, history = refine_net.sample(
         n_samples=n_samples,
         n_steps=n_steps,
+        save_freq=50,
         sigmas=sigmas,
         save_history=True,
         init_samples=cropped_test_data.clone(),
@@ -105,6 +133,7 @@ def inpaint_ncsn(
     mosaic = np.concatenate(mosaic_list, axis=0)
     plt.imsave("inpainting/mosaic.png", mosaic, cmap="gray")
     print("mosaic saved")
+    
         
     
     

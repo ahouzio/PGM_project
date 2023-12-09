@@ -54,5 +54,5 @@ def train_ncsn(
                 f.write('%s:%s\n' % (key, value))
     return batch_loss_history
 
-def save_model(model: object, path: str) -> None:
-    torch.save(model.state_dict(), path)
+def save_model(model: object, optimizer:object, path: str) -> None:
+    torch.save([model.state_dict(), optimizer.state_dict()], path)

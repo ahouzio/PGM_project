@@ -4,3 +4,5 @@ __pycache__/
 *.sh
 **.png
 run_experiments.bat
+experiments
+organize**
