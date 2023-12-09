@@ -1,4 +1,4 @@
-![image](https://github.com/ahouzio/PGM_project/assets/70753395/aa1e0abb-25d1-4c45-b26d-3646fafa8029)# PGM_project
+# PGM_project
 Study of several papers about "Denoising score matching for diffusion models"
 
 **TODO** : 
