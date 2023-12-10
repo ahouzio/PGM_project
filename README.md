@@ -19,14 +19,14 @@ Study of several papers about "Denoising score matching for diffusion models"
 
 4. Experiments with parameters (on toy dataset, on MNIST or using the pretrained model)
    - [ ] Compare sliced score matching with denoising score matching (in terms of performance and computational costs)
-   - [ ] The choice of the coefficients $\lambda(\sigma_i)$
+   - [x] The choice of the coefficients $\lambda(\sigma_i)$
    - [ ] The choice of the coefficients $\alpha(\sigma_i)$
-   - [ ] The choice of $\epsilon$
+   - [x] The choice of $\epsilon$
    - [ ] The number of steps in the Langevin dynamics (additionally, try taking different number of steps for different $\sigma$)
-   - [ ] Experiment with different sets $\lbrace \sigma_i \rbrace_{i = 1}^L$
+   - [x] Experiment with different sets $\lbrace \sigma_i \rbrace_{i = 1}^L$
 
 6. Applications
-   - [ ] Impainting: crop a random part of the image and generate the missing part
+   - [x] Impainting: crop a random part of the image and generate the missing part
 
 7. Theory
    - [x] Discuss the article "Generative modeling by estimating gradients of the data distribution"
