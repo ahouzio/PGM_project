@@ -54,6 +54,7 @@ if __name__ == "__main__":
         ),
         dtype=torch.float32,
     )
+    print("sigmas: ", sigmas)
     # choose dataset
     if args.dataset_name == "mnist":
         train_data, test_data = load_dataset(
