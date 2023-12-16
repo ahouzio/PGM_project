@@ -15,19 +15,28 @@ def load_MNIST() -> Tuple[np.ndarray, np.ndarray]:
 
 
 def load_CIFAR10() -> Tuple[np.ndarray, np.ndarray]:
+    torchvision.datasets.CIFAR10.url="http://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz"
     train_data = torchvision.datasets.CIFAR10(root="./", train=True, download=True)
     test_data = torchvision.datasets.CIFAR10(root="./", train=False, download=True)
     train_data, test_data = train_data.data, test_data.data
 
     return train_data, test_data
 
+def load_CELEBA() -> Tuple[np.ndarray, np.ndarray]:
+    torchvision.datasets.CelebA.url="https://s3-us-west-1.amazonaws.com/udacity-dlnfd/datasets/celeba.zip"
+    train_data = torchvision.datasets.CelebA(root="./", split="train", download=True)
+    test_data = torchvision.datasets.CelebA(root="./", split="test", download=True)
+    train_data, test_data = train_data.data, test_data.data
 
+    return train_data, test_data
 
 def _load_dataset(name: str) -> Tuple[np.ndarray, np.ndarray]:
     if name == "mnist":
         return load_MNIST()
     elif name == "cifar10":
         return load_CIFAR10()
+    elif name == "celeba":
+        return load_CELEBA()
     else:
         raise ValueError("The argument name must have the values 'mnist' or 'cifar10'")
 

@@ -12,9 +12,6 @@ def main():
     parser = argparse.ArgumentParser(
         description="Geneerate samples by estimating the gradient of the data distribution"
     )
-    parser.add_argument(
-        "--dataset_name", type=str, default="mnist", help="dataset name"
-    )
     parser.add_argument("--batch_size", type=int, default=128, help="batch size")
     parser.add_argument("--n_epochs", type=int, default=100, help="number of epochs")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
@@ -27,8 +24,9 @@ def main():
     parser.add_argument("--n_steps", type=int, default=100, help="number of steps")
     parser.add_argument("--save_freq", type=int, default=50, help="save frequency")
     parser.add_argument("--model_name", type=str, default="ncsn", help="model name")
-    parser.add_argument("--path", type=str, default="./pretrained_models/mnist.pth", help="path to model")
     parser.add_argument("--eps", type=float, default=5e-5, help="eps")
+    parser.add_argument("--dataset", type=str, default='mnist')
+    parser.add_argument("--directions", type=str, default='right')
     args = parser.parse_args()
     
     # command to train the model will be like:
@@ -56,17 +54,24 @@ if __name__ == "__main__":
     )
     print("sigmas: ", sigmas)
     # choose dataset
-    if args.dataset_name == "mnist":
+    # print("args.dataset_name ", args.dataset_name)
+    # if args.mode == "train" or args.mode == "inpaint":
+    if args.dataset == "mnist":
         train_data, test_data = load_dataset(
-            args.dataset_name, flatten=False, binarize=False
+            args.dataset, flatten=False, binarize=False
         )
-    elif args.dataset_name == "cifar10":
+        path = './mnist.pth'
+    elif args.dataset == "cifar10":
         train_data, test_data = load_dataset(
-            args.dataset_name, flatten=False, binarize=False
+            args.dataset, flatten=False, binarize=False
         )
-    else:
-        raise ValueError('The argument dataset_name must have the values "mnist" or "cifar10"')
-
+        path = './pretrained_models/cifar10.pth'
+    elif args.dataset == "celeba":
+        train_data, test_data = load_dataset(
+            args.dataset, flatten=False, binarize=False
+        )
+        path = './pretrained_models/celeba.pth'
+    print("path of the model: ", path)
     # choose model
     if args.model_name == "ncsn":
         model = NoiseConditionalScoreNetwork()
@@ -93,14 +98,9 @@ if __name__ == "__main__":
 
     elif args.mode == "test":
         logg.info("Starting testing")
-        test_loader = torch.utils.data.DataLoader(
-            torch.utils.data.TensorDataset(torch.tensor(test_data)),
-            batch_size=batch_size,
-            shuffle=True
-        )
         print("data loaded")
         test_ncsn(
-            path=args.path,
+            path=path,
             sigmas=sigmas,
             visualize=True,
             use_cuda=args.use_cuda,
@@ -108,6 +108,7 @@ if __name__ == "__main__":
             n_steps=args.n_steps,
             save_freq=args.save_freq,
             eps=args.eps,
+            dataset=args.dataset
         )
     elif args.mode == "inpaint":
         logg.info("Starting inpainting")
@@ -117,11 +118,13 @@ if __name__ == "__main__":
             shuffle=True
         )
         inpaint_ncsn(
-            path=args.path,
+            path=path,
             sigmas=sigmas,
             use_cuda=args.use_cuda,
             n_samples=args.n_samples,
             n_steps=args.n_steps,
+            dataset=args.dataset,
+            direction=args.directions
         )
     else:
         raise ValueError('The argument mode must have the values "train" or "generate"')

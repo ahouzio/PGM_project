@@ -633,19 +633,19 @@ class NoiseConditionalScoreNetwork(nn.Module):
         self,
         n_channels: int = 1,
         num_classes: int = 10,
-        ngf: int = 64,
         image_size: int = 28,
+        ngf: int = 64,
         use_cuda: bool = False,
     ) -> None:
         super().__init__()
 
         self.image_size = image_size
         self.n_channels = n_channels
-        self.module = CondRefineNetDilated(image_size, num_classes, n_channels, ngf)
+        self.net = CondRefineNetDilated(image_size, num_classes, n_channels, ngf)
         self.use_cuda = use_cuda
 
     def forward(self, input: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
-        return self.module(input, sigma)
+        return self.net(input, sigma)
 
     def prior(self, n_samples):
         # sample from prior distribution
@@ -676,17 +676,16 @@ class NoiseConditionalScoreNetwork(nn.Module):
         with torch.no_grad():
             for i, sigma in enumerate(sigmas):
                 alpha = eps * sigma**2 / sigmas[-1] ** 2
-                for k in range(n_steps+1):
-                    sigma_batch = (
-                        torch.ones(n_samples, device=x_k.device, dtype=torch.int) * i
-                    )
+                sigma_batch = (
+                    torch.ones(n_samples, device=x_k.device, dtype=torch.int) * i
+                )
+                for k in range(n_steps+1):  
                     score = self(x_k, sigma_batch)
-                    x_k += alpha * score.detach() / 2 + np.sqrt(alpha) * torch.randn_like(
+                    x_k += alpha * score.detach() + np.sqrt(2*alpha) * torch.randn_like(
                         x_k
-                    )
+                    ) # added sqrt(2*alpha) to match the paper
                     if save_history and k % save_freq == 0:
                         history.append(x_k.cpu())
-
         if save_history:
             return x_k.cpu(), history
 

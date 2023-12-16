@@ -2,11 +2,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from models import NoiseConditionalScoreNetwork
 import torch
-from torchvision.utils import make_grid
 import os
 from load_data import load_dataset
 import gc
-
+from tqdm import tqdm
+from torchvision.utils import save_image, make_grid
+from PIL import Image	
 def test_ncsn(
     path: str,
     sigmas: torch.Tensor,
@@ -16,8 +17,25 @@ def test_ncsn(
     n_steps: int = 100,
     save_freq: int = 50,
     eps: float = 5e-5,
+    dataset: str = "mnist"
 ):
-    refine_net = NoiseConditionalScoreNetwork(use_cuda=use_cuda)
+    if dataset == "mnist":
+        refine_net = NoiseConditionalScoreNetwork(use_cuda=use_cuda)
+    elif dataset == "cifar10":
+        print("dataset is cifar10")
+        refine_net = NoiseConditionalScoreNetwork(use_cuda=use_cuda,
+                                                    n_channels=3,
+                                                    image_size=32,
+                                                    num_classes=10,
+                                                    ngf=128)
+    elif dataset == "celeba":
+        refine_net = NoiseConditionalScoreNetwork(use_cuda=use_cuda,
+                                                    n_channels=3,
+                                                    image_size=32,
+                                                    num_classes=10,
+                                                    ngf=128)
+    print("dataset: ", dataset)
+    print("path: ", path)
     states = torch.load(path)
     pretrained = False
     if len(states) == 2: # optimizer state was also saved in the checkpoint
@@ -41,9 +59,10 @@ def test_ncsn(
                           sigmas,
                           save_freq,
                           pretrained,
-                          save_folder=f"{n_samples}_samples_{n_steps}_steps_sigma_{sigmas[0]:.4f}_{sigmas[-1]:.4f}_eps_{eps:.5f}")
+                          dataset=dataset,
+                          save_folder=f"{n_samples}_samples_{n_steps}_steps_sigma_{sigmas[0]:.4f}_{sigmas[-1]:.4f}_eps_{eps:.5f}_dataset_{dataset}")
 
-def visualize_history(samples, history,sigmas, save_freq, pretrained, save_folder="samples"):
+def visualize_history(samples, history,sigmas, save_freq, pretrained,dataset, save_folder="samples"):
     print("Visualizing history")
     grid_samples = make_grid(samples, nrow=5)
     grid_img = grid_samples.permute(1, 2, 0).clip(0, 1)  
@@ -64,19 +83,87 @@ def visualize_history(samples, history,sigmas, save_freq, pretrained, save_folde
         # save images in the save folder after converting them to numpy arrays
         grid_img = grid_img.cpu().numpy()
         step_size = sigma_step * save_freq
+        print("grid img min max: ", grid_img.min(), grid_img.max())
         plt.imsave(f"{save_folder}/sigma_{sigmas[sigma_idx]:.4f}_step_{step_size}.png", grid_img)
     gc.collect()
 
+def anneal_Langevin_dynamics_inpainting(
+                                        x_mod,
+                                        original_image,
+                                        scorenet,
+                                        sigmas,
+                                        img_size,
+                                        n_channels,
+                                        direction='left',
+                                        n_steps_each=100,
+                                        step_lr=0.000008):
+    images = []
+    original_image = original_image.unsqueeze(1).expand(-1, x_mod.shape[1], -1, -1, -1)
+    original_image = original_image.contiguous().view(-1, n_channels, img_size, img_size)
+    x_mod = x_mod.view(-1, n_channels, img_size, img_size)
+    if direction == 'left':
+        half_original_image = original_image[:, :, :, :img_size//2]
+    elif direction == 'right':
+        half_original_image = original_image[:, :, :, img_size//2:]
+    elif direction == 'top':
+        half_original_image = original_image[:, :, :img_size//2, :]
+    elif direction == 'bottom':
+        half_original_image = original_image[:, :, img_size//2:, :]
+    # save half original image
+    # save_image(half_original_image, 'inpainting/half_original_image_
+    with torch.no_grad():  
+        for c, sigma in tqdm(enumerate(sigmas), total=len(sigmas), desc="annealed Langevin dynamics sampling"):
+            labels = torch.ones(x_mod.shape[0], device=x_mod.device) * c
+            labels = labels.long()
+            step_size = step_lr * (sigma / sigmas[-1]) ** 2
 
+            corrupted_half_image = half_original_image + torch.randn_like(half_original_image) * sigma
+            # save corrupted half image
+            if direction == 'left':
+                x_mod[:, :, :, :img_size//2] = corrupted_half_image
+            elif direction == 'right':
+                x_mod[:, :, :, img_size//2:] = corrupted_half_image
+            elif direction == 'top':
+                x_mod[:, :, :img_size//2, :] = corrupted_half_image
+            elif direction == 'bottom':
+                x_mod[:, :, img_size//2:, :] = corrupted_half_image   
+                    
+            for s in range(n_steps_each):
+                images.append(torch.clamp(x_mod, 0.0, 1.0).to('cpu'))
+                noise = torch.randn_like(x_mod) * np.sqrt(step_size * 2)
+                grad = scorenet(x_mod, labels)
+                x_mod = x_mod + step_size * grad + noise
+                if direction == 'left':
+                    x_mod[:, :, :, :img_size//2] = corrupted_half_image
+                elif direction == 'right':
+                    x_mod[:, :, :, img_size//2:] = corrupted_half_image
+                elif direction == 'top':
+                    x_mod[:, :, :img_size//2, :] = corrupted_half_image
+                elif direction == 'bottom':
+                    x_mod[:, :, img_size//2:, :] = corrupted_half_image
+        #
+        return images
 def inpaint_ncsn(
             path,
             sigmas,
             use_cuda,
             n_samples,
             n_steps,
+            dataset,
+            direction
         ) :
 
-    refine_net = NoiseConditionalScoreNetwork(use_cuda=use_cuda)
+    if dataset == "mnist":
+        refine_net = NoiseConditionalScoreNetwork(use_cuda=use_cuda,
+                                                    n_channels=1,
+                                                    image_size=28,
+                                                    num_classes=10)
+    elif dataset == "cifar10":
+        refine_net = NoiseConditionalScoreNetwork(use_cuda=use_cuda,
+                                                  n_channels=3,
+                                                  image_size=32,
+                                                  num_classes=10,
+                                                    ngf=128)
     states = torch.load(path)
     if len(states) == 2: # optimizer state was also saved in the checkpoint
         refine_net.load_state_dict(states[0])
@@ -86,55 +173,45 @@ def inpaint_ncsn(
     refine_net.cuda()
     refine_net.eval()
     # download test samples of MNIST
-    train_data, test_data = load_dataset("mnist", flatten=False, binarize=False)
-    test_data = test_data[:n_samples]
-    # crop a random part of each test sample
-    cropped_test_data = []
-    print("len(test_data): ", len(test_data))
-    w,h = test_data[0].shape[1], test_data[0].shape[2]
-    print("width and height of the test data: ", w, h)
-    for i in range(len(test_data)):
-        cropped_x = np.random.randint(0, w//2)
-        cropped_y = np.random.randint(0, h//2)
-        # copy original image
-        cropped_img = test_data[i].copy()
-        # remove the cropped part from the image by setting it to zero
-        cropped_img[:, cropped_x:cropped_x+w//2, cropped_y:cropped_y+h//2] = 0
-        cropped_test_data.append(cropped_img) 
-        
-    # sample  using croppedd image as input
-    cropped_test_data = torch.tensor(cropped_test_data)
-    cropped_test_data = cropped_test_data.cuda()
-    samples, history = refine_net.sample(
-        n_samples=n_samples,
-        n_steps=n_steps,
-        save_freq=50,
-        sigmas=sigmas,
-        save_history=True,
-        init_samples=cropped_test_data.clone(),
+    if dataset== "mnist" :
+        train_data, test_data = load_dataset("mnist", flatten=False, binarize=False)
+    if dataset== "cifar10" :
+        train_data, test_data = load_dataset("cifar10", flatten=False, binarize=False)
+    
+    data_loader = torch.utils.data.DataLoader(
+        test_data,
+        batch_size=n_samples,
+        shuffle=False,
+        num_workers=0,
+        drop_last=True,
     )
-    # save the original, cropped and inpainted images in one image each
-    # create save folder
-    if not os.path.exists("inpainting"):
-        os.makedirs("inpainting")
-    mosaic_list = []
-    for i in range(len(test_data)):
-        original_img = torch.tensor(test_data[i]).cuda()
-        cropped_img = cropped_test_data[i].cuda()
-        inpainted_img = samples[i].cuda()
-        inpainted_img = inpainted_img.clip(0, 1)
-        original_img = original_img.cpu().numpy()
-        cropped_img = cropped_img.cpu().numpy()
-        inpainted_img = inpainted_img.cpu().numpy()
-        mosaic = np.concatenate([original_img,cropped_img, inpainted_img], axis=2)[0]
-        # add a white line between the images
-        mosaic = np.concatenate([mosaic, np.ones((1,mosaic.shape[1]))], axis=0)
-        mosaic_list.append(mosaic)
-    mosaic = np.concatenate(mosaic_list, axis=0)
-    plt.imsave("inpainting/mosaic.png", mosaic, cmap="gray")
-    print("mosaic saved")
-    
+     
+    test_data = next(iter(data_loader))
+    samples = torch.rand(n_samples, n_samples, refine_net.n_channels,
+                         refine_net.image_size, refine_net.image_size).cuda()
+    # save this test
+    save_image(test_data, 'inpainting/original_{0}_{1}_{2}_{3}.png'.format(dataset, direction, n_steps, n_samples), nrow=5)
+    images = anneal_Langevin_dynamics_inpainting(samples,
+                                        test_data,
+                                        refine_net,
+                                        sigmas,
+                                        n_steps_each=n_steps,
+                                        step_lr=0.00002,
+                                        img_size=refine_net.image_size,
+                                        n_channels=refine_net.n_channels,
+                                        direction= direction)
+    imgs = []
+    for i,sample in tqdm(enumerate(images)):
+        sample = sample.view(n_samples**2, refine_net.n_channels,
+                             refine_net.image_size, 
+                             refine_net.image_size)
+        image_grid = make_grid(sample, nrow=n_samples)
+        if i % 10 == 0 :
+            im = Image.fromarray(image_grid.mul_(255).add_(0.5).clamp_(0, 255).permute(1, 2, 0).to('cpu', torch.uint8).numpy())
+            imgs.append(im)
+        # save last image
+        # save_image(image_grid, 'inpainting/latest_inpainting_{0}_{1}_{2}_{3}_sigma_{4}_{5}_{6}.png'.format(dataset, direction, n_steps, n_samples, sigmas[0], sigmas[-1], i), nrow=n_samples)
+    imgs[-1].save('inpainting/latest_inpainting_{0}_{1}_{2}_{3}_sigma_{4}_{5}.png'.format(dataset, direction, n_steps, n_samples, sigmas[0], sigmas[-1]))
+    imgs[0].save('inpainting/inpainting_{0}_{1}_{2}_{3}_sigma_{4}_{5}.gif'.format(dataset, direction, n_steps, n_samples, sigmas[0], sigmas[-1]), save_all=True, append_images=imgs[1:], optimize=False, duration=40, loop=0)
         
-    
-    
-           
+        
