@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.autograd as autograd
 
 USE_CUDA = torch.cuda.is_available()
 
@@ -34,7 +33,7 @@ def plot_score_function(
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
     if plot_scatter:
-        ax.scatter(data[:, 0], data[:, 1], alpha=0.3, color='blue', s=5, label=scatter_label)
+        ax.scatter(data[:, 0].cpu().numpy(), data[:, 1].cpu().numpy(), s=1, label=scatter_label)
     ax.quiver(*xx.T, *scores_log1p.T, width=0.002, color=quiver_color, label=quiver_label)
     ax.set_xlim(*xlim)
     ax.set_ylim(*ylim)
@@ -58,15 +57,17 @@ def batch_jacobian(input, output, create_graph=True, retain_graph=True):
     batched_grad_outputs = torch.eye(
         np.prod(s_output.shape)).view((-1,) + s_output.shape).to(output)
     # batched_grad_outputs = torch.eye(s_output.size(0)).to(output)
-    grad = autograd.grad(
-        outputs=s_output, inputs=input,
+    print(batched_grad_outputs.shape)
+    gradient = torch.autograd.grad(
+        outputs=s_output,
+        inputs=input,
         grad_outputs=batched_grad_outputs,
         create_graph=create_graph,
         retain_graph=retain_graph,
         only_inputs=True,
         is_grads_batched=True
     )
-    return grad[0].permute(out_permutation())
+    return gradient[0].permute(out_permutation())
 
 
 def distribution2score(distribution):

@@ -19,6 +19,7 @@ def train_ncsn(
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0, 0.9))
     batch_loss_history = {"loss": []}
     for epoch_i in tqdm(range(n_epochs)):
+        mean_loss = 0
         print("len(train_loader) ", len(train_loader))
         for batch_i, x in tqdm(enumerate(train_loader)):
             x = x[0]
@@ -47,14 +48,15 @@ def train_ncsn(
                 loss = sliced_score_matchng(model, x, sigma_batch, labels)
             loss.backward()
             optimizer.step()
+            mean_loss += loss.data.cpu().numpy()
 
-            batch_loss_history["loss"].append(loss.data.cpu().numpy())
+        batch_loss_history["loss"].append(mean_loss / len(train_loader))
 
         # save batch_loss_history n a file
         with open('batch_loss_history.txt', 'w') as f:
             for key, value in batch_loss_history.items():
                 f.write('%s:%s\n' % (key, value))
-    return batch_loss_history
+    return batch_loss_history,model
 
 # Implement from the paper "Sliced Score Matching: A Scalable Approach to Density and Score Estimation"
 def sliced_score_matchng(model, x, sigma, labels, M, distribution):
@@ -68,16 +70,7 @@ def sliced_score_matchng(model, x, sigma, labels, M, distribution):
     2)
     4: J ← J + vᵀ∇xsm(x; θ)v
     return J
-    Args:
-        direction (_type_): 
-        model (_type_): _description_
-        x (_type_): _description_
-        sigma (_type_): _description_
-        n_steps_each (_type_): _description_
-        step_lr (_type_): _description_
-        img_size (_type_): _description_
-        n_steps (_type_): _description_
-        use_cuda (_type_): _description_
+
     """
     sm = model(x, labels)
     # M directions
@@ -85,6 +78,7 @@ def sliced_score_matchng(model, x, sigma, labels, M, distribution):
         v = torch.randn(M, *x.shape).to(x.device)
     elif distribution == "rademacher":
         v = torch.randint(0, 2, (M, *x.shape)).to(x.device) * 2 - 1
+    print(v)
     # grad(vᵀsm(x; θ), x)
     N = x.shape[0]
     J = 0 # loss
@@ -98,14 +92,55 @@ def sliced_score_matchng(model, x, sigma, labels, M, distribution):
     return J / (N * M)
             
             
-            
-    
-    
-    
-    
-    
-    
- 
+def train_sn(
+    model: object,
+    train_loader: object,
+    n_epochs: int,
+    lr: float,
+    sigmas: torch.Tensor = torch.Tensor([0.1]),
+    use_cuda: bool = False,
+    conditional: bool = True
+) -> dict:
 
+  if use_cuda:
+      critic = model.cuda()
+  model.train()
+
+  optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0, 0.9))
+
+  #curr_iter = 0
+  batch_loss_history = {"loss": []}
+  for epoch_i in tqdm(range(n_epochs)):
+    mean_loss = 0
+    for batch_i, x in enumerate(train_loader):
+        x = x[0]
+        batch_size = x.shape[0]
+        if use_cuda:
+            x = x.cuda()
+        if conditional:
+            labels = torch.randint(len(sigmas), (batch_size,))
+            sigma_batch = sigmas[labels].to(x.device)
+            sigma_batch = sigma_batch.reshape(-1,  1)
+        else:
+            sigma_batch = sigmas[0] * torch.ones(batch_size, 1, device=x.device).float()
+
+        standart_noise = torch.randn_like(x)
+        x_noisy = x + standart_noise * sigma_batch         
+        optimizer.zero_grad()
+        if conditional:
+            pred_scores = model(x_noisy, labels.to(x.device))
+        else:
+            pred_scores = model(x_noisy)
+            
+        noisy_scores = (-standart_noise / sigma_batch)
+        losses = torch.sum((pred_scores - noisy_scores)**2, axis=-1) / 2
+        loss = torch.mean(losses * sigma_batch.flatten()**2)
+        loss.backward()
+        optimizer.step()
+        mean_loss += loss.data.cpu().numpy()
+    batch_loss_history["loss"].append(mean_loss / len(train_loader))
+    
+  return model, batch_loss_history
+    
 def save_model(model: object, optimizer:object, path: str) -> None:
     torch.save([model.state_dict(), optimizer.state_dict()], path)
