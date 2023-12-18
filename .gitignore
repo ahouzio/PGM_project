@@ -2,6 +2,5 @@ MNIST
 __pycache__/
 *.pth
 *.sh
-**.png
 run_experiments.bat
 experiments
