@@ -8,6 +8,7 @@ import gc
 from tqdm import tqdm
 from torchvision.utils import save_image, make_grid
 from PIL import Image
+from utils import distribution2score
 
 
 def test_ncsn(
@@ -58,6 +59,19 @@ def test_ncsn(
             save_folder=f"{n_samples}_samples_{n_steps}_steps_sigma_{sigmas[0]:.4f}_{sigmas[-1]:.4f}_eps_{eps:.5f}_dataset_{dataset}",
         )
 
+
+def test_mix(mixture, test_data: torch.Tensor, sigmas: torch.Tensor):
+
+    true_scores = distribution2score(mixture)(test_data.cuda(), None)
+    labels = torch.arange(len(sigmas)).cuda()
+    labels = labels.repeat_interleave(test_data.size(0) // len(labels))
+    predicted_losses = []
+    for model_name in os.listdir("trained_models"):
+        model = torch.load(f"trained_models/{model_name}")
+        score = model(test_data.cuda(), labels)
+        loss = 0.5*(torch.norm(score - true_scores, p=2, dim=-1)**2).mean()
+        predicted_losses.append(loss.detach().cpu().numpy())
+    return predicted_losses
 
 def visualize_history(
     samples, history, sigmas, save_freq, pretrained, dataset, save_folder="samples"

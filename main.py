@@ -1,6 +1,6 @@
 import argparse
 from train import train_sn
-from test import test_ncsn, inpaint_ncsn
+from test import test_ncsn, inpaint_ncsn, test_mix
 from load_data import load_dataset
 import torch
 from models import *
@@ -8,8 +8,10 @@ import logging
 import torch.distributions as TD
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
-from utils import plot_score_function, batch_jacobian, distribution2score
+from utils import plot_score_function, distribution2score
 import os
+import pandas as pd
+import seaborn as sns
 
 logging.basicConfig(level=logging.INFO)
 logg = logging.getLogger(__name__)
@@ -88,7 +90,7 @@ if __name__ == "__main__":
         )
         mixture = TD.MixtureSameFamily(mix, mv_normals)
 
-        train_data, test_data = train_test_split(mixture.sample((10000,)))
+        train_data, test_data = train_test_split(mixture.sample((100000,)))
 
     # choose model
     if args.model_name == "ncsn":
@@ -128,18 +130,20 @@ if __name__ == "__main__":
         )
 
         # save model in trained_models folder ceate it if not exist
-        dataset, model_name, loss_type, epochs, samples = (
+        dataset, model_name, loss_type, epochs, samples , n_vectors, dist_type = (
             args.dataset,
             args.model_name,
             args.loss_type,
             args.n_epochs,
             args.n_samples,
+            args.n_vectors,
+            args.dist_type,
         )
         if not os.path.exists("trained_models"):
             os.makedirs("trained_models")
         if args.save == True:
             torch.save(
-                model, f"trained_models/{dataset}_{model_name}_{loss_type}_{epochs}.pth"
+                model, f"trained_models/{dataset}_{model_name}_{loss_type}_{epochs}_{dist_type}_{n_vectors}.pth"
             )
 
         if not os.path.exists("training_experiments"):
@@ -196,17 +200,44 @@ if __name__ == "__main__":
 
     elif args.mode == "test":
         logg.info("Starting testing")
-        test_ncsn(
-            path=path,
-            sigmas=sigmas,
-            visualize=True,
-            use_cuda=args.use_cuda,
-            n_samples=args.n_samples,
-            n_steps=args.n_steps,
-            save_freq=args.save_freq,
-            eps=args.eps,
-            dataset=args.dataset,
-        )
+        
+        if args.dataset == "mixture":
+            predicted_losses = test_mix(
+                mixture= mixture,
+                test_data=test_data,
+                sigmas=sigmas,                
+            )
+            print(predicted_losses)
+            labels = os.listdir("trained_models")
+            for i in range(len(labels)):
+                labels[i] = "_".join(labels[i].split("_")[6:])        
+            # Create a DataFrame for Seaborn
+            predicted_losses = [loss.item() for loss in predicted_losses]
+            df = pd.DataFrame({'Labels': labels, 'Losses': predicted_losses})
+            sorted_data = sorted(zip(labels, predicted_losses), key=lambda x: x[1])
+            sorted_labels, sorted_losses = zip(*sorted_data)
+            # Plot box plot
+            plt.figure(figsize=(10, 6))
+            sns.barplot(x=list(sorted_labels), y=list(sorted_losses), palette='viridis')
+            plt.xlabel('Experiment Labels')
+            plt.ylabel('Predicted Losses')
+            plt.title('Histogram of Predicted Losses by Experiment')
+            plt.xticks(rotation=45, ha='right')  # Rotate x-axis labels for better visibility
+            plt.tight_layout() 
+            plt.savefig(f"training_experiments/" + "/histogram.png")
+                    
+        else :
+            test_ncsn(
+                path=path,
+                sigmas=sigmas,
+                visualize=True,
+                use_cuda=args.use_cuda,
+                n_samples=args.n_samples,
+                n_steps=args.n_steps,
+                save_freq=args.save_freq,
+                eps=args.eps,
+                dataset=args.dataset,
+            )
     elif args.mode == "inpaint":
         logg.info("Starting inpainting")
         inpaint_loader = torch.utils.data.DataLoader(
