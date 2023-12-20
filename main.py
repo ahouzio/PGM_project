@@ -12,6 +12,7 @@ from utils import plot_score_function, distribution2score
 import os
 import pandas as pd
 import seaborn as sns
+import json
 
 logging.basicConfig(level=logging.INFO)
 logg = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ def main():
     parser.add_argument("--save_freq", type=int, default=50, help="save frequency")
     parser.add_argument("--model_name", type=str, default="simple", help="model name")
     parser.add_argument("--eps", type=float, default=5e-5, help="eps")
-    parser.add_argument("--dataset", type=str, default="mnist")
+    parser.add_argument("--dataset", type=str, default="cifar10")
     parser.add_argument("--directions", type=str, default="right")
     parser.add_argument("--loss_type", type=str, default="denoising")
     parser.add_argument("--n_vectors", type=int, default=1)
@@ -65,6 +66,7 @@ if __name__ == "__main__":
         ),
         dtype=torch.float32,
     )
+    print(args.dataset)
     if args.dataset == "mnist":
         train_data, test_data = load_dataset(
             args.dataset, flatten=False, binarize=False
@@ -89,8 +91,23 @@ if __name__ == "__main__":
             noise * torch.eye(2).unsqueeze(0).cuda(),
         )
         mixture = TD.MixtureSameFamily(mix, mv_normals)
-
-        train_data, test_data = train_test_split(mixture.sample((100000,)))
+        # check if the dataset is already created
+        if os.path.exists("datasets/train_data.json"):
+            with open("datasets/train_data.json", "r") as f:
+                train_data = torch.tensor(json.load(f))
+            with open("datasets/test_data.json", "r") as f:
+                test_data = torch.tensor(json.load(f))
+            print("Dataset is loaded from json file")
+        else:
+            train_data, test_data = train_test_split(mixture.sample((10000,)))
+            # save the dataset in a json file
+            if not os.path.exists("datasets"):
+                os.makedirs("datasets")
+            with open("datasets/train_data.json", "w") as f:
+                json.dump(train_data.tolist(), f)
+            with open("datasets/test_data.json", "w") as f:
+                json.dump(test_data.tolist(), f)
+            print('Dataset is created and saved in "datasets" folder')
 
     # choose model
     if args.model_name == "ncsn":
@@ -118,17 +135,6 @@ if __name__ == "__main__":
             batch_size=batch_size,
             shuffle=True,
         )
-        model, batch_loss = train_sn(
-            model,
-            train_loader=train_loader,
-            n_epochs=n_epochs,
-            sigmas=sigmas,
-            lr=args.lr,
-            conditional=True,
-            use_cuda=args.use_cuda,
-            loss_type=args.loss_type,
-        )
-
         # save model in trained_models folder ceate it if not exist
         dataset, model_name, loss_type, epochs, samples , n_vectors, dist_type = (
             args.dataset,
@@ -141,10 +147,25 @@ if __name__ == "__main__":
         )
         if not os.path.exists("trained_models"):
             os.makedirs("trained_models")
+        model_path = f"trained_models/{dataset}_{model_name}_{loss_type}_{epochs}_{dist_type}_{n_vectors}.pth"
+        model, batch_loss = train_sn(
+                model,
+                train_loader=train_loader,
+                n_epochs=n_epochs,
+                sigmas=sigmas,
+                lr=args.lr,
+                conditional=False,
+                use_cuda=args.use_cuda,
+                loss_type=args.loss_type,
+                n_vectors=args.n_vectors,
+                dist_type=args.dist_type,
+            )
+            
         if args.save == True:
             torch.save(
-                model, f"trained_models/{dataset}_{model_name}_{loss_type}_{epochs}_{dist_type}_{n_vectors}.pth"
+                model, model_path
             )
+        
 
         if not os.path.exists("training_experiments"):
             os.makedirs("training_experiments")
@@ -164,6 +185,10 @@ if __name__ == "__main__":
         with open(f"{full_path}/config.txt", "w") as f:
             for key, value in args.__dict__.items():
                 f.write("%s:%s\n" % (key, value))
+        # save loss values
+        with open(f"{full_path}/loss.txt", "w") as f:
+            for loss in batch_loss["loss"]:
+                f.write("%s\n" % loss)
         # save plot of loss after each epoch
         plt.plot(batch_loss["loss"])
         plt.title("Loss")
@@ -181,6 +206,7 @@ if __name__ == "__main__":
             ax=ax[0],
             npts=30,
         )
+  
         samples = model.sample(
             n_samples=samples, n_steps=args.n_steps, eps=args.eps, sigmas=sigmas
         )
@@ -193,18 +219,19 @@ if __name__ == "__main__":
             npts=30,
             plot_scatter=False,
         )
+        
         plot_score_function(
             model, sigmas, samples, "Predicted scores and samples", ax=ax[2], npts=30
         )
-        plt.savefig(f"training_experiments/" + exp_folder + "/score.png")
-
+        plt.savefig(f"training_experiments/" + exp_folder + "/cond_score.png")
+        
     elif args.mode == "test":
         logg.info("Starting testing")
         
         if args.dataset == "mixture":
             predicted_losses = test_mix(
                 mixture= mixture,
-                test_data=test_data,
+                test_data=train_data,
                 sigmas=sigmas,                
             )
             print(predicted_losses)

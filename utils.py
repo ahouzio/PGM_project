@@ -19,6 +19,7 @@ def plot_score_function(
     scatter_label="GT labels",
     quiver_label=None,
     quiver_color="black",
+    
 ):
     xx = np.stack(
         np.meshgrid(
@@ -37,6 +38,7 @@ def plot_score_function(
         labels = torch.arange(len(sigmas))
         labels = labels.repeat_interleave(input.size(0) // len(labels))
         scores = score_function(input, labels).detach().numpy()
+
 
     scores_norm = np.linalg.norm(scores, axis=-1, ord=2, keepdims=True)
     scores_log1p = scores / (scores_norm + 1e-9) * np.log1p(scores_norm)

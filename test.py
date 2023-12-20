@@ -106,7 +106,7 @@ def visualize_history(
 
 def anneal_Langevin_dynamics_inpainting(
     x_mod,
-    original_image,
+    image,
     scorenet,
     sigmas,
     img_size,
@@ -116,19 +116,25 @@ def anneal_Langevin_dynamics_inpainting(
     step_lr=0.000008,
 ):
     images = []
-    original_image = original_image.unsqueeze(1).expand(-1, x_mod.shape[1], -1, -1, -1)
+    original_image = image.unsqueeze(1).expand(-1, x_mod.shape[1], -1, -1, -1)
     original_image = original_image.contiguous().view(
         -1, n_channels, img_size, img_size
     )
     x_mod = x_mod.view(-1, n_channels, img_size, img_size)
+    mask = torch.zeros_like(image)
     if direction == "left":
         half_original_image = original_image[:, :, :, : img_size // 2]
+        mask[:, :, :, : img_size // 2] = 1.0 
     elif direction == "right":
         half_original_image = original_image[:, :, :, img_size // 2 :]
+        mask[:, :, :, img_size // 2 :] = 1.0
     elif direction == "top":
         half_original_image = original_image[:, :, : img_size // 2, :]
+        mask[:, :, : img_size // 2, :] = 1.0
     elif direction == "bottom":
         half_original_image = original_image[:, :, img_size // 2 :, :]
+        mask[:, :, img_size // 2 :, :] = 1.0
+    occluded_img = image * mask
     # save half original image
     # save_image(half_original_image, 'inpainting/half_original_image_
     with torch.no_grad():
@@ -168,7 +174,7 @@ def anneal_Langevin_dynamics_inpainting(
                 elif direction == "bottom":
                     x_mod[:, :, img_size // 2 :, :] = corrupted_half_image
         #
-        return images
+        return images, occluded_img
 
 
 def inpaint_ncsn(path, sigmas, use_cuda, n_samples, n_steps, dataset, direction):
@@ -219,7 +225,7 @@ def inpaint_ncsn(path, sigmas, use_cuda, n_samples, n_steps, dataset, direction)
         ),
         nrow=5,
     )
-    images = anneal_Langevin_dynamics_inpainting(
+    images, occluded_img = anneal_Langevin_dynamics_inpainting(
         samples,
         test_data,
         refine_net,
@@ -231,6 +237,22 @@ def inpaint_ncsn(path, sigmas, use_cuda, n_samples, n_steps, dataset, direction)
         direction=direction,
     )
     imgs = []
+    print("occluded image shape: ", occluded_img.shape)
+    print("test data shape: ", test_data.shape)
+    # Convert the occluded image to a grid
+    occluded_grid = make_grid(
+        occluded_img,
+        nrow=1,
+        normalize=True,
+        scale_each=True,
+    )
+    test_grid = make_grid(
+        test_data,
+        nrow=1,
+        normalize=True,
+        scale_each=True,
+    )
+    print(occluded_grid.shape, test_grid.shape)
     for i, sample in tqdm(enumerate(images)):
         sample = sample.view(
             n_samples**2,
@@ -238,7 +260,14 @@ def inpaint_ncsn(path, sigmas, use_cuda, n_samples, n_steps, dataset, direction)
             refine_net.image_size,
             refine_net.image_size,
         )
-        image_grid = make_grid(sample, nrow=n_samples)
+
+        image_grid = make_grid(
+            sample,
+            nrow=n_samples,
+            normalize=True,
+            scale_each=True,
+        )
+        image_grid = torch.cat([occluded_grid, image_grid, test_grid], dim=2)
         if i % 10 == 0:
             im = Image.fromarray(
                 image_grid.mul_(255)

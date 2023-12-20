@@ -11,7 +11,7 @@ def train_sn(
     lr: float,
     sigmas: torch.Tensor = torch.Tensor([0.1]),
     use_cuda: bool = False,
-    conditional: bool = True,
+    conditional: bool = False,
     loss_type: str = "denoising_score_matching",
     n_vectors: int = 1,
     dist_type: str = "normal",
@@ -53,17 +53,11 @@ def train_sn(
             elif loss_type == "sliced_score_matching":
                 x.requires_grad_(True)
                 optimizer.zero_grad()
-                if conditional :
-                    loss = sliced_score_matching(model, x, labels, n_vectors, dist_type)
-                else:
-                    loss = sliced_score_matching(model, x, None, n_vectors, dist_type)
+                loss = sliced_score_matching(model, x, labels, n_vectors, dist_type)
             elif loss_type == "sliced_score_matching_vr":
                 x.requires_grad_(True)
                 optimizer.zero_grad()
-                if conditional :
-                    loss = sliced_score_matching_vr(model, x, labels, n_vectors, dist_type)
-                else:
-                    loss = sliced_score_matching_vr(model, x, None, n_vectors, dist_type)
+                loss = sliced_score_matching_vr(model, x, labels,  n_vectors, dist_type)
             loss.backward()
             optimizer.step()
             mean_loss += loss.data.cpu().numpy()
@@ -71,36 +65,32 @@ def train_sn(
     return model, batch_loss_history
 
 # Implement from the paper "Sliced Score Matching: A Scalable Approach to Density and Score Estimation"
-def sliced_score_matching(model, x, labels, M, distribution):
+def sliced_score_matching(model, x, labels,  M, distribution):
     if distribution == "normal":
         v = torch.randn(M, *x.shape).to(x.device)
     elif distribution == "rademacher":
         v = torch.randint(0, 2, (M, *x.shape)).to(x.device) * 2 - 1
+    v = v.to(x.device).float()
     N = x.shape[0]
-    J = 0  # loss
-    if labels != None:
-        sm = model(x, labels.to(x.device))
-    else:
-        sm = model(x)
+    J = 0 
+    sm = model(x, labels.to(x.device))
     grad_sm = batch_jacobian(input=x, output=sm)
     for i in range(N):
         for j in range(M): 
             J += 0.5 * torch.matmul(torch.matmul(v[j][i], grad_sm[i]), v[j][i]) + 0.5 * torch.matmul(v[j][i], sm[i])**2
     return J / (N * M)
 
-def sliced_score_matching_vr(model, x, labels, M, distribution):
+def sliced_score_matching_vr(model, x, labels,  M, distribution):
     # print(labels, x.shape, labels.shape)
     # M directions
     if distribution == "normal":
         v = torch.randn(M, *x.shape).to(x.device)
     elif distribution == "rademacher":
         v = torch.randint(0, 2, (M, *x.shape)).to(x.device) * 2 - 1
+    v = v.to(x.device).float()
     N = x.shape[0]
-    J = 0  # loss
-    if labels != None:
-        sm = model(x, labels.to(x.device))
-    else:
-        sm = model(x)
+    J = 0 
+    sm = model(x, labels.to(x.device))
     grad_sm = batch_jacobian(input=x, output=sm)
     for i in range(N):
         for j in range(M):  
