@@ -148,18 +148,23 @@ if __name__ == "__main__":
         if not os.path.exists("trained_models"):
             os.makedirs("trained_models")
         model_path = f"trained_models/{dataset}_{model_name}_{loss_type}_{epochs}_{dist_type}_{n_vectors}.pth"
-        model, batch_loss = train_sn(
-                model,
-                train_loader=train_loader,
-                n_epochs=n_epochs,
-                sigmas=sigmas,
-                lr=args.lr,
-                conditional=False,
-                use_cuda=args.use_cuda,
-                loss_type=args.loss_type,
-                n_vectors=args.n_vectors,
-                dist_type=args.dist_type,
-            )
+        # check if the model is already trained
+        if os.path.exists(model_path):
+            model = torch.load(model_path)
+            print("Model is loaded from the saved file")
+        else:
+            model, batch_loss = train_sn(
+                    model,
+                    train_loader=train_loader,
+                    n_epochs=n_epochs,
+                    sigmas=sigmas,
+                    lr=args.lr,
+                    conditional=True,
+                    use_cuda=args.use_cuda,
+                    loss_type=args.loss_type,
+                    n_vectors=args.n_vectors,
+                    dist_type=args.dist_type,
+                )
             
         if args.save == True:
             torch.save(
@@ -169,7 +174,7 @@ if __name__ == "__main__":
 
         if not os.path.exists("training_experiments"):
             os.makedirs("training_experiments")
-        if args.loss_type == "sliced_score_matching" or args.loss_type == "sliced_score_matching_vr":
+        if loss_type == "sliced_score_matching" or loss_type == "sliced_score_matching_vr":
             exp_folder = (
                 f"{dataset}_{model_name}_{loss_type}_epochs_{epochs}_samples_{samples}_n_vectors_{args.n_vectors}_dist_type_{args.dist_type}"
             )
@@ -182,6 +187,7 @@ if __name__ == "__main__":
             os.makedirs(full_path)
 
         # save a config file with parameters of the experiment
+        
         with open(f"{full_path}/config.txt", "w") as f:
             for key, value in args.__dict__.items():
                 f.write("%s:%s\n" % (key, value))
@@ -189,7 +195,7 @@ if __name__ == "__main__":
         with open(f"{full_path}/loss.txt", "w") as f:
             for loss in batch_loss["loss"]:
                 f.write("%s\n" % loss)
-        # save plot of loss after each epoch
+        #save plot of loss after each epoch
         plt.plot(batch_loss["loss"])
         plt.title("Loss")
         plt.xlabel("Epoch")
@@ -202,7 +208,7 @@ if __name__ == "__main__":
             distribution2score(mixture),
             sigmas,
             train_data,
-            "TwoGaussMixture Score Function",
+            "TwoGaussMixture Score and Samples",
             ax=ax[0],
             npts=30,
         )
@@ -224,6 +230,27 @@ if __name__ == "__main__":
             model, sigmas, samples, "Predicted scores and samples", ax=ax[2], npts=30
         )
         plt.savefig(f"training_experiments/" + exp_folder + "/cond_score.png")
+        
+        # crete an image with only the predicted samples
+        
+        fig, ax = plt.subplots(1, 1, figsize=(4, 4))
+        plot_score_function(
+            model, sigmas, samples, f"Predicted samples", ax=ax, npts=30
+        )
+        plt.savefig("training_experiments/" + exp_folder + f"/Predicted_samples {loss_type}_{dist_type}_{n_vectors}.png")
+        
+        # save an image with the actual samples
+        fig, ax = plt.subplots(1, 1, figsize=(4, 4))
+        plot_score_function( 
+            distribution2score(mixture),
+            sigmas,
+            train_data,
+            "TwoGaussMixture Score Function",
+            ax=ax,
+            npts=30,
+        )
+        plt.savefig(f"training_experiments/" + exp_folder + "/actual_samples.png")
+
         
     elif args.mode == "test":
         logg.info("Starting testing")

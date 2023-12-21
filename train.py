@@ -3,6 +3,7 @@ import torch
 from tqdm import tqdm
 import numpy as np
 from utils import batch_jacobian
+from sklearn.decomposition import PCA
 
 def train_sn(
     model: object,
@@ -11,7 +12,7 @@ def train_sn(
     lr: float,
     sigmas: torch.Tensor = torch.Tensor([0.1]),
     use_cuda: bool = False,
-    conditional: bool = False,
+    conditional: bool = True,
     loss_type: str = "denoising_score_matching",
     n_vectors: int = 1,
     dist_type: str = "normal",
@@ -22,7 +23,12 @@ def train_sn(
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0, 0.9))
     batch_loss_history = {"loss": []}
-    
+    v = None
+    if dist_type == "pca":
+        # get the first principal component from the data
+        pca = PCA(n_components=1) 
+        pca.fit(train_loader.dataset.tensors[0])
+        v = pca.components_
     for epoch_i in tqdm(range(n_epochs)):
         mean_loss = 0
         for batch_i, x in enumerate(train_loader):
@@ -53,11 +59,11 @@ def train_sn(
             elif loss_type == "sliced_score_matching":
                 x.requires_grad_(True)
                 optimizer.zero_grad()
-                loss = sliced_score_matching(model, x, labels, n_vectors, dist_type)
+                loss = sliced_score_matching(model, x, labels, n_vectors, dist_type,v)
             elif loss_type == "sliced_score_matching_vr":
                 x.requires_grad_(True)
                 optimizer.zero_grad()
-                loss = sliced_score_matching_vr(model, x, labels,  n_vectors, dist_type)
+                loss = sliced_score_matching_vr(model, x, labels,  n_vectors, dist_type,v)
             loss.backward()
             optimizer.step()
             mean_loss += loss.data.cpu().numpy()
@@ -65,11 +71,14 @@ def train_sn(
     return model, batch_loss_history
 
 # Implement from the paper "Sliced Score Matching: A Scalable Approach to Density and Score Estimation"
-def sliced_score_matching(model, x, labels,  M, distribution):
+def sliced_score_matching(model, x, labels,  M, distribution,v=None):
     if distribution == "normal":
         v = torch.randn(M, *x.shape).to(x.device)
     elif distribution == "rademacher":
         v = torch.randint(0, 2, (M, *x.shape)).to(x.device) * 2 - 1
+    elif distribution == "pca" :
+        v = torch.from_numpy(np.repeat(v[:, np.newaxis, :], x.shape[0], axis=1)) 
+   
     v = v.to(x.device).float()
     N = x.shape[0]
     J = 0 
